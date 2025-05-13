@@ -227,7 +227,7 @@
 
     <!-- Main Content -->
     <main class="container mx-auto py-6 pt-24 px-4">
-        <!-- Login Form (Initially Shown) -->
+        <!-- Login Form -->
         <div id="loginContainer"
             class="max-w-md mx-auto bg-white rounded-xl shadow-soft p-8 mt-10 border border-gray-100">
             <div class="text-center mb-8">
@@ -238,29 +238,29 @@
                 <p class="text-gray-500 mt-2">Enter your credentials to access the moderator dashboard</p>
             </div>
             <div class="mb-4">
-                <label for="modId" class="block text-gray-700 mb-2 font-medium">Moderator ID</label>
+                <label for="email" class="block text-gray-700 mb-2 font-medium">Email</label>
                 <div class="relative">
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <i class="fas fa-user text-gray-400"></i>
+                        <i class="fas fa-envelope text-gray-400"></i>
                     </div>
-                    <input type="text" id="modId"
-                        class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all">
+                    <input type="email" id="email"
+                        class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                        placeholder="Enter your email">
                 </div>
             </div>
             <div class="mb-6">
-                <label for="modPassword" class="block text-gray-700 mb-2 font-medium">Password</label>
+                <label for="password" class="block text-gray-700 mb-2 font-medium">Password</label>
                 <div class="relative">
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <i class="fas fa-lock text-gray-400"></i>
                     </div>
-                    <input type="password" id="modPassword"
-                        class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all">
-                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
-                        <button id="togglePassword" type="button"
-                            class="text-gray-400 hover:text-gray-600 focus:outline-none">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                    </div>
+                    <input type="password" id="password"
+                        class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                        placeholder="Enter your password">
+                    <button type="button" id="togglePassword"
+                        class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-eye"></i>
+                    </button>
                 </div>
             </div>
             <div id="loginError" class="hidden mb-4 p-3 bg-red-50 text-red-600 text-center rounded-lg">
@@ -710,7 +710,7 @@
             id: 'mod123',
             password: 'mod123'
         };
-l
+
         // Initialize localStorage if needed
         function initializeLocalStorage() {
             if (!localStorage.getItem('users')) {
@@ -726,15 +726,27 @@ l
 
         // Get data from localStorage
         function getUsers() {
-            return JSON.parse(localStorage.getItem('users')) || [];
+            try {
+                return JSON.parse(localStorage.getItem('users')) || [];
+            } catch {
+                return [];
+            }
         }
 
         function getReports() {
-            return JSON.parse(localStorage.getItem('reports')) || [];
+            try {
+                return JSON.parse(localStorage.getItem('reports')) || [];
+            } catch {
+                return [];
+            }
         }
 
         function getWarnings() {
-            return JSON.parse(localStorage.getItem('warnings')) || [];
+            try {
+                return JSON.parse(localStorage.getItem('warnings')) || [];
+            } catch {
+                return [];
+            }
         }
 
         // Save data to localStorage
@@ -753,11 +765,12 @@ l
         // DOM Elements
         const loginContainer = document.getElementById('loginContainer');
         const dashboardContainer = document.getElementById('dashboardContainer');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const togglePassword = document.getElementById('togglePassword');
         const loginButton = document.getElementById('loginButton');
         const loginError = document.getElementById('loginError');
-        const modIdInput = document.getElementById('modId');
-        const modPasswordInput = document.getElementById('modPassword');
-        const togglePassword = document.getElementById('togglePassword');
+        const errorMessage = document.getElementById('errorMessage');
         const userTableBody = document.getElementById('userTableBody');
         const reportTableBody = document.getElementById('reportTableBody');
         const userSearchInput = document.getElementById('userSearchInput');
@@ -835,15 +848,32 @@ l
         let activeTab = 'all';
 
         // Check if moderator is logged in
-        function checkAuth() {
-            const isLoggedIn = localStorage.getItem('modLoggedIn') === 'true';
-            if (isLoggedIn) {
-                loginContainer.classList.add('hidden');
-                dashboardContainer.classList.remove('hidden');
-                updateDashboard();
-            } else {
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/moderator/me', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.user && data.user.role === 'moderator') {
+                        loginContainer.classList.add('hidden');
+                        dashboardContainer.classList.remove('hidden');
+                        await fetchUsers();
+                        await fetchReports();
+                        updateDashboard();
+                        return true;
+                    }
+                }
                 loginContainer.classList.remove('hidden');
                 dashboardContainer.classList.add('hidden');
+                return false;
+            } catch (err) {
+                console.error('Error checking auth:', err);
+                loginContainer.classList.remove('hidden');
+                dashboardContainer.classList.add('hidden');
+                return false;
             }
         }
 
@@ -1323,276 +1353,401 @@ l
             // Initialize localStorage
             initializeLocalStorage();
 
-            // Check if logged in
+            // Check if logged in on page load
             checkAuth();
 
             // Login form submission
-            loginButton.addEventListener('click', () => {
-                const id = modIdInput.value;
-                const password = modPasswordInput.value;
+            loginButton.addEventListener('click', handleLogin);
 
-                if (id === modCredentials.id && password === modCredentials.password) {
-                    localStorage.setItem('modLoggedIn', 'true');
-                    checkAuth();
-                    showToast('Login Successful', 'Welcome to the Moderator Dashboard', 'success');
-                } else {
-                    loginError.classList.remove('hidden');
-                    document.getElementById('errorMessage').textContent = 'Invalid credentials. Please try again.';
-                }
-            });
-
-            // Toggle password visibility
+            // Password toggle
             togglePassword.addEventListener('click', () => {
-                const type = modPasswordInput.getAttribute('type') === 'password' ? 'text' : 'password';
-                modPasswordInput.setAttribute('type', type);
+                const type = passwordInput.type === 'password' ? 'text' : 'password';
+                passwordInput.type = type;
                 togglePassword.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
             });
 
-            // Search and filter
-            userSearchInput.addEventListener('input', applyFilters);
-            statusFilter.addEventListener('change', applyFilters);
-
-            // Pagination
-            prevPage.addEventListener('click', () => {
-                if (currentPage > 1) {
-                    currentPage--;
-                    currentPageNum.textContent = currentPage;
-                    renderTable();
-                }
-            });
-
-            nextPage.addEventListener('click', () => {
-                const maxPage = Math.ceil(filteredUsers.length / itemsPerPage);
-                if (currentPage < maxPage) {
-                    currentPage++;
-                    currentPageNum.textContent = currentPage;
-                    renderTable();
-                }
-            });
-
-            // Page size select
-            pageSizeSelect.addEventListener('change', () => {
-                itemsPerPage = parseInt(pageSizeSelect.value);
-                currentPage = 1;
-                currentPageNum.textContent = currentPage;
-                renderTable();
-            });
-
-            // Tab navigation
-            allUsersTab.addEventListener('click', () => setActiveTab('all'));
-            reportedTab.addEventListener('click', () => setActiveTab('reported'));
-            warnedTab.addEventListener('click', () => setActiveTab('warned'));
-
-            // View user modal
-            closeViewModal.addEventListener('click', () => {
-                viewUserModal.classList.add('hidden');
-            });
-
-            closeViewBtn.addEventListener('click', () => {
-                viewUserModal.classList.add('hidden');
-            });
-
-            warnUserBtn.addEventListener('click', () => {
-                const userId = warnUserBtn.getAttribute('data-id');
-                viewUserModal.classList.add('hidden');
-                openWarningModal(userId);
-            });
-
-            // View report modal
-            closeReportModal.addEventListener('click', () => {
-                viewReportModal.classList.add('hidden');
-            });
-
-            ignoreReportBtn.addEventListener('click', () => {
-                const reportId = ignoreReportBtn.getAttribute('data-id');
-                showConfirmationModal('Ignore Report', 'Are you sure you want to ignore this report?', 'warning', () => {
-                    resolveReport(reportId, 'ignored');
-                    viewReportModal.classList.add('hidden');
-                });
-            });
-
-            warnReportBtn.addEventListener('click', () => {
-                const userId = warnReportBtn.getAttribute('data-id');
-                viewReportModal.classList.add('hidden');
-                openWarningModal(userId);
-            });
-
-            removeContentBtn.addEventListener('click', () => {
-                const reportId = removeContentBtn.getAttribute('data-id');
-                showConfirmationModal('Remove Content', 'Are you sure you want to remove this content? This action cannot be undone.', 'danger', () => {
-                    removeContent(reportId);
-                    viewReportModal.classList.add('hidden');
-                });
-            });
-
-            // Warning modal
-            warningForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-
-                const userId = warningUserId.value;
-                const reason = warningReason.value;
-                const message = warningMessage.value;
-
-                if (!message.trim()) {
-                    showToast('Error', 'Please provide a warning message.', 'error');
-                    return;
-                }
-
-                try {
-                    // First validate the user exists
-                    const users = getUsers();
-                    const userExists = users.find(u => u.id.toString() === userId);
-
-                    if (!userExists) {
-                        throw new Error('User not found');
+            // Allow form submission with Enter key
+            [emailInput, passwordInput].forEach(input => {
+                input.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleLogin();
                     }
-
-                    // Issue the warning with error handling
-                    await issueWarning(userId, reason, message);
-                    warningModal.classList.add('hidden');
-                    showToast('Success', 'Warning issued successfully', 'success');
-
-                    // Update the UI
-                    updateDashboard();
-                } catch (error) {
-                    console.error('Error issuing warning:', error);
-                    showToast('Error', error.message || 'Failed to issue warning', 'error');
-                }
+                });
             });
 
-            cancelWarning.addEventListener('click', () => {
-                warningModal.classList.add('hidden');
-            });
+            // User search input
+            userSearchInput.addEventListener('input', renderUsersTable);
 
-            // Modal cancel button
-            cancelAction.addEventListener('click', () => {
-                confirmationModal.classList.add('hidden');
-            });
-
-            // Close toast
-            closeToast.addEventListener('click', () => {
-                toastNotification.classList.add('opacity-0', 'translate-y-2');
-                setTimeout(() => {
-                    toastNotification.classList.add('hidden');
-                    toastNotification.classList.remove('opacity-0', 'translate-y-2');
-                }, 300);
-            });
+            // Status filter
+            statusFilter.addEventListener('change', renderUsersTable);
 
             // Profile dropdown
-            profileDropdownButton.addEventListener('click', () => {
-                profileDropdown.classList.toggle('hidden');
-            });
+            const profileDropdownButton = document.getElementById('profileDropdownButton');
+            const profileDropdown = document.getElementById('profileDropdown');
+            
+            if (profileDropdownButton && profileDropdown) {
+                profileDropdownButton.addEventListener('click', () => {
+                    profileDropdown.classList.toggle('hidden');
+                });
 
-            // Close dropdown when clicking outside
-            document.addEventListener('click', (event) => {
-                if (!profileDropdownButton.contains(event.target) && !profileDropdown.contains(event.target)) {
-                    profileDropdown.classList.add('hidden');
-                }
-            });
-
-            // Logout
-            logoutButton.addEventListener('click', () => {
-                localStorage.removeItem('modLoggedIn');
-                checkAuth();
-            });
+                // Close dropdown when clicking outside
+                document.addEventListener('click', (e) => {
+                    if (!profileDropdownButton.contains(e.target) && !profileDropdown.contains(e.target)) {
+                        profileDropdown.classList.add('hidden');
+                    }
+                });
+            }
 
             // Mobile menu
-            menuBtn.addEventListener('click', () => {
-                mobileMenu.classList.remove('hidden');
+            const menuBtn = document.getElementById('menu-btn');
+            const mobileMenu = document.getElementById('mobile-menu');
+            const closeMenu = document.getElementById('close-menu');
+
+            if (menuBtn && mobileMenu && closeMenu) {
+                menuBtn.addEventListener('click', () => {
+                    mobileMenu.classList.remove('hidden');
+                });
+
+                closeMenu.addEventListener('click', () => {
+                    mobileMenu.classList.add('hidden');
+                });
+            }
+
+            // Setup logout handlers
+            document.querySelectorAll('#logoutButton, #mobile-logout').forEach(button => {
+                button.addEventListener('click', handleLogout);
             });
 
-            closeMenu.addEventListener('click', () => {
-                mobileMenu.classList.add('hidden');
-            });
-
-            mobileLogout.addEventListener('click', () => {
-                localStorage.removeItem('modLoggedIn');
-                checkAuth();
-                mobileMenu.classList.add('hidden');
-            });
-
-            // Comment: In a real application, we would fetch data from an API
-            // Example API fetch code (commented out as requested):
-            /*
-            // Fetch users
-            async function fetchUsers() {
-                try {
-                    const response = await fetch('/api/users');
-                    if (!response.ok) {
-                        throw new Error('Failed to fetch users');
-                    }
-                    const data = await response.json();
-                    saveUsers(data);
-                    updateDashboard();
-                } catch (error) {
-                    console.error('Error fetching users:', error);
-                    showToast('Error', 'Failed to load users. Please try again.', 'error');
-                }
+            // Toast close button
+            const closeToast = document.getElementById('closeToast');
+            if (closeToast) {
+                closeToast.addEventListener('click', () => {
+                    document.getElementById('toastNotification').classList.add('hidden');
+                });
             }
-            
-            // Fetch reports
-            async function fetchReports() {
-                try {
-                    const response = await fetch('/api/reports');
-                    if (!response.ok) {
-                        throw new Error('Failed to fetch reports');
-                    }
-                    const data = await response.json();
-                    saveReports(data);
-                    renderReportsTable();
-                } catch (error) {
-                    console.error('Error fetching reports:', error);
-                    showToast('Error', 'Failed to load reports. Please try again.', 'error');
-                }
-            }
-            
-            // Submit warning to API
-            async function submitWarning(userId, reason, message) {
-                try {
-                    const response = await fetch('/api/warnings', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ userId, reason, message })
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error('Failed to submit warning');
-                    }
-                    
-                    const data = await response.json();
-                    return data;
-                } catch (error) {
-                    console.error('Error submitting warning:', error);
-                    throw error;
-                }
-            }
-            
-            // Update report status
-            async function updateReportStatus(reportId, status) {
-                try {
-                    const response = await fetch(`/api/reports/${reportId}`, {
-                        method: 'PATCH',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ status })
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error('Failed to update report');
-                    }
-                    
-                    const data = await response.json();
-                    return data;
-                } catch (error) {
-                    console.error('Error updating report:', error);
-                    throw error;
-                }
-            }
-            */
         });
+
+        // Login form submission
+        async function handleLogin() {
+            try {
+                const response = await fetch('/api/moderator/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: emailInput.value,
+                        password: passwordInput.value
+                    }),
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    await checkAuth();
+                    showToast('Login Successful', 'Welcome to the Moderator Dashboard', 'success');
+                } else {
+                    loginError.classList.remove('hidden');
+                    errorMessage.textContent = data.message || 'Invalid credentials. Please try again.';
+                }
+            } catch (err) {
+                console.error('Login error:', err);
+                loginError.classList.remove('hidden');
+                errorMessage.textContent = 'Login failed. Please try again.';
+            }
+        }
+
+        // Handle logout
+        async function handleLogout() {
+            try {
+                const response = await fetch('/api/moderator/logout', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    await checkAuth();
+                    showToast('Logout Successful', 'You have been logged out successfully', 'success');
+                } else {
+                    showToast('Error', 'Failed to log out. Please try again.', 'error');
+                }
+            } catch (err) {
+                console.error('Logout error:', err);
+                showToast('Error', 'Failed to log out. Please try again.', 'error');
+            }
+        }
+
+        // Fetch users from the API
+        async function fetchUsers() {
+            try {
+                const response = await fetch('/api/moderator/users', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to fetch users');
+                }
+                const users = await response.json();
+                saveUsers(users);
+                updateDashboard();
+                renderUsersTable();
+            } catch (error) {
+                console.error('Error fetching users:', error);
+                showToast('Error', 'Failed to load users. Please try again.', 'error');
+            }
+        }
+
+        // Fetch reports from the API
+        async function fetchReports() {
+            try {
+                const response = await fetch('/api/moderator/reports', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to fetch reports');
+                }
+                const reports = await response.json();
+                saveReports(reports);
+                renderReportsTable();
+            } catch (error) {
+                console.error('Error fetching reports:', error);
+                showToast('Error', 'Failed to load reports. Please try again.', 'error');
+            }
+        }
+
+        // Update dashboard stats
+        function updateDashboard() {
+            const users = getUsers();
+            const reports = getReports();
+            const warnings = getWarnings();
+
+            userCount.textContent = users.length;
+            activeCount.textContent = users.filter(user => user.status === 'active').length;
+            reportCount.textContent = reports.filter(report => report.status === 'pending').length;
+            warningCount.textContent = warnings.length;
+
+            renderUsersTable();
+            renderReportsTable();
+        }
+
+        // Render users table
+        function renderUsersTable() {
+            const users = getUsers();
+            const searchQuery = userSearchInput.value.toLowerCase();
+            const statusFilterValue = statusFilter.value;
+            
+            // Filter users based on search and status
+            filteredUsers = users.filter(user => {
+                const matchesSearch = 
+                    user.name.toLowerCase().includes(searchQuery) ||
+                    user.email.toLowerCase().includes(searchQuery) ||
+                    user.status.toLowerCase().includes(searchQuery);
+                
+                const matchesStatus = statusFilterValue === 'all' || user.status === statusFilterValue;
+                
+                return matchesSearch && matchesStatus;
+            });
+
+            // Update showing/total counts
+            showingCount.textContent = filteredUsers.length;
+            totalCount.textContent = users.length;
+
+            // Clear table
+            userTableBody.innerHTML = '';
+
+            if (filteredUsers.length === 0) {
+                noResults.classList.remove('hidden');
+                return;
+            }
+
+            noResults.classList.add('hidden');
+
+            // Add users to table
+            filteredUsers.forEach(user => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center">
+                            <div class="ml-4">
+                                <div class="text-sm font-medium text-gray-900">${user.name}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.email}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                            ${user.status === 'active' ? 'bg-green-100 text-green-800' : 
+                            user.status === 'inactive' ? 'bg-gray-100 text-gray-800' : 
+                            'bg-red-100 text-red-800'}">${user.status}</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatDate(user.lastActive)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.reports}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <button class="view-user text-primary-600 hover:text-primary-900 mr-3" data-id="${user.id}">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button class="warn-user text-yellow-600 hover:text-yellow-900 mr-3" data-id="${user.id}">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </button>
+                        ${user.status !== 'banned' ? 
+                            `<button class="ban-user text-red-600 hover:text-red-900" data-id="${user.id}">
+                                <i class="fas fa-ban"></i>
+                            </button>` : 
+                            `<button class="unban-user text-green-600 hover:text-green-900" data-id="${user.id}">
+                                <i class="fas fa-undo"></i>
+                            </button>`
+                        }
+                    </td>
+                `;
+                userTableBody.appendChild(row);
+            });
+
+            // Attach event listeners to action buttons
+            attachTableEventListeners();
+        }
+
+        // Format date helper function
+        function formatDate(dateString) {
+            if (!dateString) return 'Never';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // Show toast notification
+        function showToast(title, message, type = 'success') {
+            const toast = document.getElementById('toastNotification');
+            const toastTitle = document.getElementById('toastTitle');
+            const toastMessage = document.getElementById('toastMessage');
+            const toastIcon = document.getElementById('toastIcon');
+            const toastIconSymbol = document.getElementById('toastIconSymbol');
+
+            toastTitle.textContent = title;
+            toastMessage.textContent = message;
+
+            // Set icon and colors based on type
+            switch (type) {
+                case 'success':
+                    toastIcon.className = 'flex-shrink-0 w-10 h-10 rounded-full bg-green-100 flex items-center justify-center';
+                    toastIconSymbol.className = 'fas fa-check text-green-500';
+                    break;
+                case 'error':
+                    toastIcon.className = 'flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center';
+                    toastIconSymbol.className = 'fas fa-times text-red-500';
+                    break;
+                case 'warning':
+                    toastIcon.className = 'flex-shrink-0 w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center';
+                    toastIconSymbol.className = 'fas fa-exclamation-triangle text-yellow-500';
+                    break;
+            }
+
+            toast.classList.remove('hidden');
+            toast.classList.add('animate-fade-in');
+
+            // Auto hide after 3 seconds
+            setTimeout(() => {
+                toast.classList.add('hidden');
+                toast.classList.remove('animate-fade-in');
+            }, 3000);
+        }
+
+        // Attach event listeners to table action buttons
+        function attachTableEventListeners() {
+            // View user button
+            document.querySelectorAll('.view-user').forEach(button => {
+                button.addEventListener('click', () => {
+                    const userId = button.getAttribute('data-id');
+                    openViewUserModal(userId);
+                });
+            });
+
+            // Warn user button
+            document.querySelectorAll('.warn-user').forEach(button => {
+                button.addEventListener('click', () => {
+                    const userId = button.getAttribute('data-id');
+                    openWarningModal(userId);
+                });
+            });
+
+            // Ban user button
+            document.querySelectorAll('.ban-user').forEach(button => {
+                button.addEventListener('click', () => {
+                    const userId = button.getAttribute('data-id');
+                    showConfirmationModal(
+                        'Ban User',
+                        'Are you sure you want to ban this user? They will not be able to access their account.',
+                        'danger',
+                        async () => {
+                            try {
+                                const response = await fetch('/api/moderator/users/ban', {
+                                    method: 'PATCH',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({ id: userId }),
+                                    credentials: 'include'
+                                });
+
+                                if (response.ok) {
+                                    await fetchUsers();
+                                    showToast('User Banned', 'The user has been banned successfully.', 'success');
+                                } else {
+                                    const data = await response.json();
+                                    showToast('Error', data.message || 'Failed to ban user.', 'error');
+                                }
+                            } catch (error) {
+                                console.error('Error banning user:', error);
+                                showToast('Error', 'Failed to ban user. Please try again.', 'error');
+                            }
+                        }
+                    );
+                });
+            });
+
+            // Unban user button
+            document.querySelectorAll('.unban-user').forEach(button => {
+                button.addEventListener('click', () => {
+                    const userId = button.getAttribute('data-id');
+                    showConfirmationModal(
+                        'Unban User',
+                        'Are you sure you want to unban this user?',
+                        'warning',
+                        async () => {
+                            try {
+                                const response = await fetch('/api/moderator/users/unban', {
+                                    method: 'PATCH',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({ id: userId }),
+                                    credentials: 'include'
+                                });
+
+                                if (response.ok) {
+                                    await fetchUsers();
+                                    showToast('User Unbanned', 'The user has been unbanned successfully.', 'success');
+                                } else {
+                                    const data = await response.json();
+                                    showToast('Error', data.message || 'Failed to unban user.', 'error');
+                                }
+                            } catch (error) {
+                                console.error('Error unbanning user:', error);
+                                showToast('Error', 'Failed to unban user. Please try again.', 'error');
+                            }
+                        }
+                    );
+                });
+            });
+        }
     </script>
 </body>
 

@@ -670,6 +670,7 @@
                     if (data.user && (data.user.role === 'admin' || data.user.role === 'owner') && data.user.email) {
                         loggedInAdminId = data.user.id;
                         loggedInAdminRole = data.user.role; // Store the admin's role
+                        const roleName = data.user.role.charAt(0).toUpperCase() + data.user.role.slice(1);
                         dashboardElements.adminName.textContent = data.user.name || 'Admin';
                         authElements.loginSection.classList.add('hidden');
                         authElements.dashboardSection.classList.remove('hidden');

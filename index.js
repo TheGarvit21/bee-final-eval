@@ -124,7 +124,7 @@ const checkOwnerAuth = async (req, res, next) => {
 const checkAdminAuth = async (req, res, next) => {
     if (!req.session.userId) return res.status(403).json({ message: 'Forbidden: Admin access required' });
     const user = await userModel.findById(req.session.userId);
-    if (!user || user.role !== 'admin') return res.status(403).json({ message: 'Forbidden: Admin access required' });
+    if (!user || (user.role !== 'admin' && user.role !== 'owner')) return res.status(403).json({ message: 'Forbidden: Admin access required' });
     req.user = user;
     next();
 };
@@ -196,8 +196,9 @@ app.post('/api/admin/min', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ message: 'Missing email or password' });
     const admin = await userModel.findOne({ email });
-    if (!admin || admin.role !== 'admin' || !(await bcrypt.compare(password, admin.password))) return res.status(401).json({ message: 'Invalid admin credentials' });
-    if (admin.demotedByRole && admin.role !== 'admin') return res.status(403).json({ message: 'You have been demoted by the owner.' });
+    if (!admin || !(await bcrypt.compare(password, admin.password))) return res.status(401).json({ message: 'Invalid credentials' });
+    if (admin.role !== 'admin' && admin.role !== 'owner') return res.status(403).json({ message: 'You do not have admin access.' });
+    if (admin.demotedByRole) return res.status(403).json({ message: 'You have been demoted by the owner.' });
     if (admin.status === 'banned') return res.status(403).json({ message: 'Your account has been blocked.' });
     req.session.userId = admin._id;
     await userModel.updateOne({ _id: admin._id }, { lastLogin: new Date().toISOString() });
@@ -226,6 +227,10 @@ app.get('/api/moderator/me', checkModAuth, async (req, res) => {
     const user = await userModel.findById(req.session.userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json({ user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+});
+
+app.post('/api/moderator/logout', checkModAuth, (req, res) => {
+    req.session.destroy(() => res.clearLocalStorage());
 });
 
 app.post('/api/owner/users', checkOwnerAuth, async (req, res) => {
@@ -867,4 +872,17 @@ app.use((err, req, res, next) => {
 // Start server
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+});
+
+app.post('/api/admin/login', async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ message: 'Missing email or password' });
+    const admin = await userModel.findOne({ email });
+    if (!admin || !(await bcrypt.compare(password, admin.password))) return res.status(401).json({ message: 'Invalid credentials' });
+    if (admin.role !== 'admin' && admin.role !== 'owner') return res.status(403).json({ message: 'You do not have admin access.' });
+    if (admin.demotedByRole) return res.status(403).json({ message: 'You have been demoted by the owner.' });
+    if (admin.status === 'banned') return res.status(403).json({ message: 'Your account has been blocked.' });
+    req.session.userId = admin._id;
+    await userModel.updateOne({ _id: admin._id }, { lastLogin: new Date().toISOString() });
+    res.json({ message: 'Admin login successful', user: { id: admin._id, name: admin.name, email: admin.email, role: admin.role } });
 });

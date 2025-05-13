@@ -20,7 +20,7 @@ async function checkCreateOwner() {
 
         // Create owner if none exists
         const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash('owner123', salt);
+        const hashedPassword = await bcrypt.hash('owner@123', salt);
 
         const owner = await userModel.create({
             name: 'Owner User',
